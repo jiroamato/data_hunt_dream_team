@@ -1,0 +1,123 @@
+---
+title: "DataHunt"
+subtitle: Lavanya
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+```{r}
+#Easy Question
+n <- 30
+x <- 6
+p0 <- 0.10
+alpha <- 0.05
+```
+
+```{r}
+p_hat <- x / n
+p_value <- pbinom(x - 1, size = n, prob = p0, lower.tail = FALSE)
+
+se <- sqrt(p_hat * (1 - p_hat) / n)
+ci_low  <- p_hat - 1.96 * se
+ci_high <- p_hat + 1.96 * se
+```
+
+```{r}
+cat("Sample rate:", p_hat, "\n")
+cat("p value:", p_value, "\n")
+cat("95% CI: (", ci_low, ",", ci_high, ")\n")
+```
+
+The p value of 0.073 exceeds alpha = 0.05, so we fail to reject $H_O$ and do not have sufficient evidence to conclude the defect rate exceeds 10%. The 95% CI (5.7%, 34.3%) is wide given n = 30, meaning the data are consistent with the factory's claim but the sample is too small to be conclusive!
+
+```{r}
+#Medium Question
+#Hypotheses
+#H_O: mu_engg = mu_science (like the mean coffee consumption is equal across both groups)
+#H_1: mu_engg > mu_science (that means engineering students drink more coffee)
+#one sided question because it asks if engg students drinks more?
+
+#TEST imma use
+#Two independent groups, continuous outcome, n = 50 /group. So a two sample 
+#t test (Welch's probably, which does not assume equal variances). I might even check 
+#normality Shapiro Wilk.
+```
+
+```{r}
+df <- read.csv("data/students_and_coffee.csv")
+df$faculty <- trimws(df$faculty) #THE DEBUGGING OMG!!!!!
+
+eng <- df$coffee_cups_per_day[df$faculty == "Engineering"]
+sci <- df$coffee_cups_per_day[df$faculty == "Science"]
+```
+
+```{r}
+mean(eng)
+mean(sci)
+```
+
+```{r}
+shapiro.test(eng)
+shapiro.test(sci)
+```
+
+```{r}
+#actual welch two sample t test
+t.test(eng, sci, alternative = "greater", var.equal = FALSE)
+```
+
+The engg group's Shapiro Wilk test returns p = 0.023, which technically rejects the normality. However, with n = 50 the t test is still robust to mild departures from normality by the CLT, so the Welch t test result do remains valid.
+
+The Welch two sample t test yields t = 2.90 on df = 97.65, with a one sided p val of 0.0023. Since p val\<alpha = 0.05, we reject the null hypothesis. There is statistically significant evidence that engg students consume more coffee per day than science students on average (3.02 vs 2.46 cups/day), with the 95% CI for the difference bounded below at 0.24 cups. This would be my final conclusion!
+
+```{r}
+#HARD STUDENT PERFORMANCE INSIGHT
+library(ggplot2)
+```
+
+```{r}
+df <- read.csv("data/student_performance_insights.csv")
+```
+
+```{r}
+df$Stress_Numeric <- as.numeric(factor(df$Stress_Level,levels = c("Low", "Moderate", "High")))
+```
+
+```{r}
+#imma use multiple linear regression model
+model <- lm(GPA ~ Study_Hours_Per_Day + Sleep_Hours_Per_Day +
+                  Social_Hours_Per_Day + Physical_Activity_Hours_Per_Day +
+                  Extracurricular_Hours_Per_Day + Stress_Numeric, data = df)
+
+summary(model)
+```
+
+```{r}
+#scale it because i want to compare the var importance
+df_scaled <- as.data.frame(scale(df[, c("GPA", "Study_Hours_Per_Day",
+                                         "Sleep_Hours_Per_Day","Social_Hours_Per_Day",
+                                         "Physical_Activity_Hours_Per_Day",
+                                         "Extracurricular_Hours_Per_Day",
+                                         "Stress_Numeric")]))
+```
+
+```{r}
+model_std <- lm(GPA ~ ., data = df_scaled)
+summary(model_std)
+```
+
+```{r}
+par(mfrow = c(2, 2)) #better graphics incase its new to yall
+plot(model)
+```
+
+
+MODEL: This is my multiple linear regression predicting GPA from study hours, sleep, social hours, physical activity, extracurricular hours, and stress level. n = 2000, adjusted r_squared = 0.54. Extracurricular_Hours_Per_Day is automatically dropped due to perfect multicollinearity with the remaining predictors combined okay. It has no independent info on its own.
+
+FACTORS: Study hours is the only statistically significant predictor (p very small). Its std beta of 0.771 means it accounts for the overwhelming majority of explained variance. No other variable literall even comes close. Sleep, social hours, physical activity, and stress all have standardised betas below 0.07 and FAIL to reach significance at alpha = 0.05. For practical purposes, this model reduces to: GPA is largely a function of how many hours a student studies per day.
+
+INTERPRET- Each additional hour of study per day is associated with a GPA increase of approX 0.16 points, holding all other vars constant. The model explains 54% of GPA variance, which is reasonable for observational lifestyle data in my opinion tbh. The diagnostic plots support the model assumptions: residuals vs fitted shows no sys curvature, the QQ plot tracks the diagonal closely indicating approx normality, scale location shows roughly constant spread :), and no points breach Cook's distance thresholds in the leverage plot. YAYYYY Observations 702, 520, and 383 are flagged as mild outliers but do not appear to be distorting the fit given the large sample size.
+
+LIMITATION - The dataset contains no measure of prior academic ability or even course difficulty bruh. Study hours almost certainly captures some of the effect of student aptitude, but since high ability students may study more and also earn kinda higher GPAs independently (you know what i'm talking about). This produces sorta an upward bias in the study hours coeff. The true causal effect of an add. hour of study is likely smaller than 0.16 GPA points. Without an ability control variable, the coefficient cannot be interpreted causally. I think this would be the biggest limitation here. 
